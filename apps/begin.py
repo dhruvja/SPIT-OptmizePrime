@@ -41,7 +41,9 @@ def app():
 
 	st.title("Stock Prediction App")
 
-	stocks = ("AAPL", "GOOG", "MSFT", "TSLA")
+	stocks = ("^BSESN", "^NSEI", "SBIN.NS", "TATAELXSI.NS", "RELIANCE.NS", "INFY.NS", "YESBANK.NS", "SUZLON.NS", "ZOMATO.NS")
+
+	FullNames = {"^BSESN": "Sensex", "^NSEI": "Nifty", "SBIN.NS": "SBI India", "TATAELXSI.NS": "TATA Elxsi", "RELIANCE.NS": "Reliance", "INFY.NS": "Infosys", "YESBANK.NS": "Yes Bank", "SUZLON.NS": "Suzlon", "ZOMATO.NS": "Zomato"}
 
 	selected_stocks = st.sidebar.selectbox(
 		"Select The Stock Ticker",
@@ -49,10 +51,15 @@ def app():
 
 	)
 
-	n_years = st.sidebar.slider("Years of prediction", 1,4)
+	n_years = st.sidebar.slider("Years of prediction", 1,10)
 	period = n_years*365
 
 	statistics = st.empty()
+
+	newsPositive = 0
+	tweetsPositive = 0
+	newsNegative = 0
+	tweetsNegative = 0
 
 
 
@@ -121,7 +128,7 @@ def app():
 			print("Twitter analysis happening")
 
 			api = TwitterClient()
-			tweets = api.get_tweets(query = selected_stocks, count = 20000)
+			tweets = api.get_tweets(query = FullNames[selected_stocks], count = 20000)
 
 			ptweets = [tweet for tweet in tweets if tweet['sentiment'] == 'positive']
 			positive = 100*len(ptweets)/len(tweets)
@@ -134,20 +141,24 @@ def app():
 			options = {
 			"xAxis": {
 				"type": "category",
-				"data": ["Positive", "Negative", "Neutral"],
+				"data": ["Bullish", "Bearish", "Neutral"],
 			},
 			"yAxis": {"type": "value"},
-			"series": [{"data": [positive, negative, neutral], "type": "bar"}],
+			"series": [{"data": [{"value": positive, "itemStyle": {"color": 'green'}},{"value": negative, "itemStyle": {"color": 'red'}},{"value": neutral, "itemStyle": {"color": 'blue'}}], "type": "bar"}],
 			}
 			st_echarts(options=options, height="500px")  
 
-			with st.expander("Positive Tweets"):
+			tweetsPositive = positive
+			tweetsNegative = negative
+
+			with st.expander("Bullish Tweets"):
 				for tweet in ptweets[:10]:
 					st.subheader(tweet['text'])
 			
-			with st.expander("Negative Tweets"):
+			with st.expander("Bearish Tweets"):
 				for tweet in ntweets[:10]:
 					st.subheader(tweet['text'])
+			return (tweetsPositive, tweetsNegative)
 
 	class RawData():
 		def run(self):
@@ -206,6 +217,9 @@ def app():
 			fig2 = m.plot_components(forecast)
 			st.write(fig2)
 
+			return forecast
+
+
 	class NewsAnalyzer(Thread):
 		def run(self):
 			print("News analysis happening")
@@ -222,6 +236,7 @@ def app():
 
 			# save the company name in a variable
 			company_name = selected_stocks
+			company_name = FullNames[selected_stocks]
 			#As long as the company name is valid, not empty...
 			if company_name != '':
 				#print(f'Searching for and analyzing {company_name}, Please be patient, it might take a while...')
@@ -310,27 +325,36 @@ def app():
 			negative = (len(negative_list)/len(news_list))*100
 			neutral = (len(neutral_list)/len(news_list))*100
 
+			newsNegative = negative
+			newsPositive = positive
+
 			st.title("News Analysis")
 
 			options = {
 			"xAxis": {
 				"type": "category",
-				"data": ["Positive", "Negative", "Neutral"],
+				"data": ["Bullish", "Bearish", "Neutral"],
 			},
 			"yAxis": {"type": "value"},
-			"series": [{"data": [positive, negative, neutral], "type": "bar"}],
+			"series": [{"data": [{"value": positive, "itemStyle": {"color": 'green'}},{"value": negative, "itemStyle": {"color": 'red'}},{"value": neutral, "itemStyle": {"color": 'blue'}}], "type": "bar"}],
 			}
+
+
 			st_echarts(options=options, height="500px") 
 
 			print(positive_list[0][0])
 
-			with st.expander("Positive News"):
-				for news in positive_list[0]:
-					st.subheader(news)
-			
-			with st.expander("Negative News"):
-				for news in negative_list[0]:
-					st.subheader(news)
+			try:
+				with st.expander("Bullish News"):
+					for news in positive_list[0]:
+						st.subheader(news)
+				
+				with st.expander("Bearish News"):
+					for news in negative_list[0]:
+						st.subheader(news)
+			except:
+				print("No news")
+			return (newsNegative, newsPositive)
 
 	class Statistics():
 		def run(self):
@@ -355,17 +379,35 @@ def app():
 			# 	st.plotly_chart(fig)
 			# plot_raw_data()
 
+
+			print(forecastedData['trend'])	
+			ratio = forecastedData['trend'][forecastedData['trend'].size - 1]/data['Close'][data['Close'].size - 1]
+			print(ratio)
+			print(data['Close'].size)
+			print(newsPositive, tweetsPositive)
+
+			pos = (newsPositive + tweetsPositive)/2
+			neg = (newsNegative + tweetsNegative)/2
+
+			print((pos-neg)*ratio)
+
+			ratio = (pos-neg)/ratio
+			ratio = "{:.2f}".format(ratio)
+
+
 			if weekly['Close'][weekly['Close'].size - 2] < weekly['Open'][weekly['Open'].size - 2]:
 				with statistics.container():
 
 					kpi1,kpi2 = st.columns(2)
 					kpi1.metric(label="Circuit", value="Lower Circuit")
+					kpi2.metric(label="Buy Percentage", value = str(ratio) + "%")
 					# kpi2.metric(label="Married Count 💍", value= 8)
 					# kpi3.metric(label="A/C Balance ＄", value= 7)
 			else:
 				with statistics.container():
 					kpi1,kpi2= st.columns(2)
 					kpi1.metric(label="Circuit", value="Upper Circuit")
+					kpi2.metric(label="Buy Percentage", value = str(ratio) + "%")
 					# kpi2.metric(label="Married Count 💍", value= 8)
 					# kpi3.metric(label="A/C Balance ＄", value= 7)
 
@@ -380,9 +422,9 @@ def app():
 	# t1.start()
 	# print("waiting for it to return")
 	# t4.start()
-	t3.run()
+	tweetsPositive, tweetsNegative =  t3.run()
 	t2.run()
+	newsNegative, newsPositive = t4.run()
+	forecastedData = t1.run()
 	t5.run()
-	t4.run()
-	t1.run()
 
